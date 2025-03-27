@@ -2,8 +2,8 @@ FROM rocker/r-ver:4.3.3
 
 # Set environment variables
 ENV RENV_VERSION=v1.1.3
-ARG DSCI_AZ_BLOB_DEV_SAS
-ENV DSCI_AZ_BLOB_DEV_SAS=$DSCI_AZ_BLOB_DEV_SAS
+# ARG DSCI_AZ_BLOB_DEV_SAS
+# ENV DSCI_AZ_BLOB_DEV_SAS=$DSCI_AZ_BLOB_DEV_SAS
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
