@@ -8,20 +8,22 @@ library(leaflet.extras)
 library(AzureStor)
 
 # loading union boundaries
-sas_token <- Sys.getenv("DSCI_AZ_BLOB_DEV_SAS")
-storage_account <- "imb0chd0dev"
-container_name <- "projects"
-gpkg_blob <- "ds-aa-bgd-cyclone-monitoring/raw/cod_ab/bgd_adm_sel_bbs_20201113_shp.gpkg" 
+
+#sas_token <- Sys.getenv("DSCI_AZ_BLOB_DEV_SAS")
+#storage_account <- "imb0chd0dev"
+#container_name <- "projects"
+#gpkg_blob <- "ds-aa-bgd-cyclone-monitoring/raw/cod_ab/bgd_adm_sel_bbs_20201113_shp.gpkg" 
 
 # Create a blob container object
-blob_container <- blob_container(
-  sprintf("https://%s.blob.core.windows.net/%s", storage_account, container_name),
-  sas = sas_token
-)
+#blob_container <- blob_container(
+#  sprintf("https://%s.blob.core.windows.net/%s", storage_account, container_name),
+#  sas = sas_token
+#)
 
 # Download the GeoPackage to a temporary file
-temp_file <- tempfile(fileext = ".gpkg")
-storage_download(blob_container, src = gpkg_blob, dest = temp_file)
+#temp_file <- tempfile(fileext = ".gpkg")
+#storage_download(blob_container, src = gpkg_blob, dest = temp_file)
+temp_file <- "data/bgd_adm_sel_bbs_20201113_shp.gpkg"
 
 # Read the GeoPackage using sf
 unions <- st_read(temp_file, layer = "bgd_admbnda_adm4_bbs_20201113") 
