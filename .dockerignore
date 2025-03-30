@@ -1,6 +1,5 @@
 .git
 __pycache__
-data/
 logs/
 .Rproj.user
 .Rhistory
