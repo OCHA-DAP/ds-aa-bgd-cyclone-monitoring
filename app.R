@@ -1,5 +1,6 @@
 # libraries
 library(shiny)
+library(shinyWidgets)
 library(sf)
 library(tidyverse)
 library(leaflet)
@@ -65,7 +66,7 @@ ui <- fluidPage(
       width = 3,  
       tags$style(HTML("
         .shiny-input-container {
-          background-color: #D6EAF8 !important; 
+          background-color: #D8F2E9 !important; 
           border-radius: 5px;
           padding: 5px;
         }
@@ -79,13 +80,22 @@ ui <- fluidPage(
           margin-top: 10px;
         }
       ")),
+      radioGroupButtons(
+        inputId = "input_method",
+        label = "Select Input Method:",
+        choices = c("Select on Map", "Enter Coordinates"),
+        selected = "Select on Map",
+        status = "success",
+        justified = TRUE,
+        checkIcon = list(yes = icon("ok", lib = "glyphicon"))
+      ),
       
       fluidRow(
         column(5, div(style = "display: flex; align-items: center;", 
                       tags$label("Longitude:", class = "input-label"))),
         column(7, numericInput("lon", NULL, value = 89.54, step = 0.01, width = "100%"))
       ),
-      
+        
       fluidRow(
         column(5, div(style = "display: flex; align-items: center;", 
                       tags$label("Latitude:", class = "input-label"))),
@@ -141,7 +151,7 @@ ui <- fluidPage(
 )
 
 # Define Server
-server <- function(input, output) {
+server <- function(input, output, session) {
   
   observeEvent(input$compute, {
     req(input$lon, input$lat, input$threshold)
@@ -224,9 +234,21 @@ server <- function(input, output) {
       )
   })
   
+  observeEvent(input$map_click, {
+    if(input$input_method == "Select on Map") {
+      click <- input$map_click
+      updateNumericInput(session, "lat", value = click$lat)
+      updateNumericInput(session, "lon", value = click$lng)
+      # Add marker to map
+      leafletProxy("map") %>%
+        clearMarkers() %>%
+        addMarkers(lng = click$lng, lat = click$lat, popup = "Selected Point")
+    }
+  })
+  
   # Render Leaflet map
   output$map <- renderLeaflet({
-    leaflet(options = leafletOptions(minZoom = 8.5)) |>
+    leaflet(options = leafletOptions(minZoom = 8)) |>
       addTiles() |>
       addPolygons(data = unions_framework, weight = 1, fillColor = "transparent")
   })
