@@ -57,8 +57,8 @@ ui <- fluidPage(
       }
     "))
   ),
-  fluidRow(style="background-color: #1BB580; margin-bottom: 10px;",
-    column(8, h2("Bangladesh Cyclone Monitoring Tool", style = "text-align: left;color:white;font-weight:bold;")),
+  fluidRow(style="background-color: #1BB580; margin-bottom: 3px;",
+    column(8, h3("Bangladesh Cyclone AA Framework Monitoring Tool", style = "text-align: left;color:white;font-weight:bold;")),
     column(4, div(style = "text-align: right", img(src = "centre_banner_greenbg.png", height = "50px", style = "margin-top:10px;")))
   ),
   sidebarLayout(
