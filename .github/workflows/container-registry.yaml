@@ -3,7 +3,8 @@ name: Azure Container Registry
 on:
   push:
     branches:
-      master
+      - master
+  workflow_dispatch:
 
 env:
   IMAGE_NAME: shiny-azure-app-service
