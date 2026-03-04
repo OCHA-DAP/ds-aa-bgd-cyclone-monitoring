@@ -62,4 +62,4 @@ COPY . .
 EXPOSE 3838
 
 # Run the Shiny app with the correct library path
-CMD R -e "renv::load(); .libPaths(c(Sys.getenv('RENV_PATHS_LIBRARY'), .libPaths())); shiny::runApp('app.R', host = '0.0.0.0', port = 3838)"
+CMD ["Rscript", "-e", "renv::load(); .libPaths(c(Sys.getenv('RENV_PATHS_LIBRARY'), .libPaths())); shiny::runApp('app.R', host = '0.0.0.0', port = 3838)"]
