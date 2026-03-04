@@ -1,7 +1,7 @@
-FROM rocker/r-ver:4.3.3
+FROM rocker/r-ver:4.5.0
 
 # Set environment variables
-ENV RENV_VERSION=v1.1.3
+ENV RENV_VERSION=v1.1.7
 ENV CRAN_REPO=https://packagemanager.posit.co/cran/latest
 ENV RENV_CONFIG_CACHE_SYMLINKS=TRUE
 ENV RENV_CONFIG_NCPUS=max
