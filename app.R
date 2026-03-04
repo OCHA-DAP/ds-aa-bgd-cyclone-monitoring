@@ -86,6 +86,14 @@ ui <- fluidPage(
           word-break: break-word;
           text-align: center;
         }
+        #input_method .btn {
+          white-space: normal;
+          width: 100%;
+          text-align: center;
+        }
+        #input_method .dummy-icon {
+          visibility: hidden;
+        }
         .shiny-download-link {
           display: block;
           width: 100%;
@@ -95,11 +103,14 @@ ui <- fluidPage(
       radioGroupButtons(
         inputId = "input_method",
         label = "Select Input Method:",
-        choices = c("Select on Map", "Enter Coordinates"),
-        selected = "Select on Map",
+        choices = c("Select Location on Map", "Enter Location Manually"),
+        selected = "Select Location on Map",
         status = "success",
         justified = TRUE,
-        checkIcon = list(yes = icon("ok", lib = "glyphicon"))
+        checkIcon = list(
+          yes = icon("ok", lib = "glyphicon"),
+          no  = icon("remove", lib = "glyphicon")
+        )
       ),
       
       fluidRow(
@@ -280,7 +291,7 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$map_click, {
-    if (input$input_method == "Select on Map") {
+    if (input$input_method == "Select Location on Map") {
       click <- input$map_click
       updateNumericInput(session, "lat", value = click$lat)
       updateNumericInput(session, "lon", value = click$lng)
