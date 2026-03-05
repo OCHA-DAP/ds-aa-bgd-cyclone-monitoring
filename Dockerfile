@@ -1,7 +1,7 @@
-FROM rocker/r-ver:4.3.3
+FROM rocker/r-ver:4.5.0
 
 # Set environment variables
-ENV RENV_VERSION=v1.1.3
+ENV RENV_VERSION=1.1.7
 ENV CRAN_REPO=https://packagemanager.posit.co/cran/latest
 ENV RENV_CONFIG_CACHE_SYMLINKS=TRUE
 ENV RENV_CONFIG_NCPUS=max
@@ -10,7 +10,7 @@ ENV RENV_CONFIG_NCPUS=max
 # ENV DSCI_AZ_BLOB_DEV_SAS=$DSCI_AZ_BLOB_DEV_SAS
 
 # Set the R library path explicitly
-ENV RENV_PATHS_LIBRARY=/app/renv/library/R-4.3/x86_64-pc-linux-gnu
+ENV RENV_PATHS_LIBRARY=/app/renv/library/R-4.5/x86_64-pc-linux-gnu
 
 # Ensure the directory exists
 RUN mkdir -p ${RENV_PATHS_LIBRARY}
@@ -38,7 +38,7 @@ RUN R -e "Sys.setenv(RENV_PATHS_LIBRARY='${RENV_PATHS_LIBRARY}'); \
           options(repos = c(CRAN = '${CRAN_REPO}')); \
           install.packages('remotes'); \
           print('===== After installing remotes ====='); print(.libPaths()); \
-          remotes::install_github('rstudio/renv@${RENV_VERSION}'); \
+          install.packages('renv'); \
           print('===== After installing renv ====='); print(.libPaths()); \
           installed_pkgs <- installed.packages(); \
           print('===== Installed packages in RENV_PATHS_LIBRARY ====='); print(installed_pkgs[, c('Package', 'LibPath')])"
@@ -62,4 +62,4 @@ COPY . .
 EXPOSE 3838
 
 # Run the Shiny app with the correct library path
-CMD R -e "renv::load(); .libPaths(c(Sys.getenv('RENV_PATHS_LIBRARY'), .libPaths())); shiny::runApp('app.R', host = '0.0.0.0', port = 3838)"
+CMD ["Rscript", "-e", "renv::load(); .libPaths(c(Sys.getenv('RENV_PATHS_LIBRARY'), .libPaths())); shiny::runApp('app.R', host = '0.0.0.0', port = 3838)"]
