@@ -13,9 +13,10 @@ from ocha_relay.listmonk import ListmonkClient
 
 from src.constants import (
     ACTION_MAX_LEAD_H,
-    CHD_GREEN,
     FRAMEWORK_URL,
     LISTMONK_LIST_ID,
+    OCHA_BLUE,
+    OCHA_LOGO,
     THRESHOLD_KMH,
 )
 
@@ -41,6 +42,11 @@ def listmonk_client() -> ListmonkClient:
         username=os.environ["DSCI_LISTMONK_API_USERNAME"],
         password=os.environ["DSCI_LISTMONK_API_KEY"],
     )
+
+
+def _logo_src() -> str:
+    with open(OCHA_LOGO, "rb") as f:
+        return f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
 
 
 def _embed(fig) -> str:
@@ -112,11 +118,13 @@ def build_body(issue_time, storms: list) -> str:
   .bgd-cyclone {{ font-family: Helvetica, Arial, sans-serif; font-size:14px;
                  color:#222; }}
   .bgd-cyclone h1 {{ font-size:20px; }}
-  .bgd-cyclone h2 {{ font-size:16px; color:{CHD_GREEN};
+  .bgd-cyclone h2 {{ font-size:16px; color:{OCHA_BLUE};
                     margin-top:22px; margin-bottom:4px; }}
   .bgd-cyclone p {{ line-height:1.5; }}
 </style>
 <div class="bgd-cyclone">
+          <img src="{_logo_src()}" alt="OCHA" width="150"
+               style="display:block;width:150px;height:auto;margin:0 0 8px;">
           <h1>Bangladesh Cyclone Monitoring: ECMWF forecast</h1>
           <p>Issued {issue_time:%d %B %Y %H:%M UTC}. Storms within reach of
           the target districts: {names}.</p>
@@ -129,7 +137,7 @@ def build_body(issue_time, storms: list) -> str:
           framework's wind reduction factor to the ECMWF landfall wind (10 m
           maximum wind, not converted).
           <a href="{FRAMEWORK_URL}" target="_blank"
-             style="color:{CHD_GREEN};">Framework Document</a>.</p>
+             style="color:{OCHA_BLUE};">Framework Document</a>.</p>
 </div>"""
 
 

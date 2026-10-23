@@ -90,5 +90,7 @@ FRAMEWORK_URL = (
     "anticipatory-action-framework-bangladesh-cyclones-2025-version"
 )
 
-CHD_GREEN = "#1BB580"
-CHD_RED = "#c25048"
+# OCHA blue, as in the Listmonk template header the email sits under
+OCHA_BLUE = "#009EDB"
+
+OCHA_LOGO = "assets/ocha_logo_wide.png"
