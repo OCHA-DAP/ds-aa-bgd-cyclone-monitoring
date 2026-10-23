@@ -17,6 +17,7 @@ from src.constants import (  # noqa: E402
     ACTION_MAX_LEAD_H,
     COUNTRIES_GEOJSON,
     LAND_GEOJSON,
+    OCHA_BLUE,
     READINESS_MAX_LEAD_H,
     THRESHOLD_KMH,
 )
@@ -31,13 +32,14 @@ MUTED = "#898781"
 BORDER = "#c3c2b7"
 TRACK = "#9a9892"
 TRACK_HIT = "#d03b3b"
-TARGET = "#1baf7a"
+TARGET = OCHA_BLUE
 
-# Landfall shading by lead time, one blue hue, darker is sooner
+# Landfall shading by lead time, one orange hue, darker is sooner. Orange
+# keeps the dots apart from the OCHA-blue target districts.
 LANDFALL_COLORS = {
-    "action": "#104281",
-    "readiness": "#3987e5",
-    "later": "#b7d3f6",
+    "action": "#9c3a12",
+    "readiness": "#eb6834",
+    "later": "#f7c2a6",
 }
 
 COUNTRY_LABELS = {
@@ -164,7 +166,7 @@ def _tracks_panel(ax, df_storm, df_tracks):
         for cls, color in LANDFALL_COLORS.items():
             sub = landed[landed["lead_class"] == cls]
             ax.scatter(sub["landfall_lon"], sub["landfall_lat"], s=26,
-                       color=color, edgecolor="white", linewidth=0.8,
+                       color=color, edgecolor=INK_2, linewidth=0.5,
                        zorder=9)
     return extent
 
@@ -193,7 +195,7 @@ def plot_storm_map(df_storm, df_tracks, storm_label: str, issue_time):
                markersize=8, label="Target districts"),
     ] + [
         Line2D([], [], marker="o", linestyle="", markersize=6,
-               markerfacecolor=c, markeredgecolor="white", label=lbl)
+               markerfacecolor=c, markeredgecolor=INK_2, label=lbl)
         for c, lbl in [
             (LANDFALL_COLORS["action"], "Landfall within 72 h"),
             (LANDFALL_COLORS["readiness"], "Landfall in 3-5 days"),

@@ -14,3 +14,4 @@ requirements-monitoring.txt
 .venv-monitoring/
 data/land_bay_of_bengal_ne10m.geojson
 data/countries_bay_of_bengal_ne10m.geojson
+assets/

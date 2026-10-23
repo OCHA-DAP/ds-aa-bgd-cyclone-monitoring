@@ -5,167 +5,168 @@ library(sf)
 library(tidyverse)
 library(leaflet)
 library(DT)
-library(leaflet.extras2)
-library(AzureStor)
-library(rmapshaper)
+
+# --- Framework settings -------------------------------------------------------
+# Bangladesh cyclone AA framework (RC 7 April 2025, USG/ERC 25 April 2025):
+# 118 km/h or higher at union level in the six target districts.
+TARGET_DISTRICTS <- c("Satkhira", "Khulna", "Barguna", "Patuakhali", "Bhola", "Noakhali")
+FRAMEWORK_THRESHOLD <- 118
+FRAMEWORK_URL <- paste0(
+  "https://www.unocha.org/publications/report/bangladesh/",
+  "anticipatory-action-framework-bangladesh-cyclones-2025-version"
+)
+
+OCHA_BLUE <- "#009EDB"
+ABOVE_COLOR <- "#d03b3b"
+BELOW_COLOR <- "#9ec5f4"
 
 # loading union boundaries
-temp_file <- "data/bgd_adm_sel_bbs_20201113_shp.gpkg"
+unions <- st_read("data/bgd_adm_sel_bbs_20201113_shp.gpkg",
+                  layer = "bgd_admbnda_adm4_bbs_20201113", quiet = TRUE)
 
-# Read the GeoPackage using sf
-unions <- st_read(temp_file, layer = "bgd_admbnda_adm4_bbs_20201113", quiet = TRUE)
-
-unions_framework <- unions |>
-  dplyr::filter(ADM2_EN %in% c("Barguna","Bhola","Patuakhali","Noakhali","Satkhira","Khulna")) |>
-  st_transform(crs = 4326)
-
-# --- Performance precomputation (NO UI changes) ---
 # Keep only columns used in computations/tables to reduce memory + join overhead
-unions_ll <- unions_framework |>
-  dplyr::select(
-    ADM1_EN, ADM2_EN, ADM2_PCODE,
-    ADM3_EN, ADM3_PCODE,
-    ADM4_EN, ADM4_PCODE,
-    geom
-  )
+unions_ll <- unions |>
+  dplyr::filter(ADM2_EN %in% TARGET_DISTRICTS) |>
+  st_transform(crs = 4326) |>
+  dplyr::select(ADM1_EN, ADM2_EN, ADM2_PCODE, ADM3_EN, ADM3_PCODE, ADM4_EN, ADM4_PCODE)
 
-# Simplify geometry for faster leaflet rendering (tune keep as needed)
-unions_ll_slim <- rmapshaper::ms_simplify(unions_ll, keep = 0.05, keep_shapes = TRUE)
-
-# Projected geometry for fast distance calculations (meters)
-# Bangladesh fits well in UTM 46N for this purpose
+# Projected geometry for distance calculations (metres).
+# Bangladesh fits well in UTM 46N for this purpose.
 unions_m <- st_transform(unions_ll, 32646)
 unions_boundary_m <- st_boundary(unions_m)
 
-# Define UI (UNCHANGED)
+# Simplified geometry for faster leaflet rendering (~100 m tolerance)
+unions_ll_slim <- unions_m |>
+  st_simplify(dTolerance = 100, preserveTopology = TRUE) |>
+  st_transform(4326)
+
+districts_ll <- unions_m |>
+  group_by(ADM2_EN) |>
+  summarise(.groups = "drop") |>
+  st_simplify(dTolerance = 300, preserveTopology = TRUE) |>
+  st_transform(4326)
+
+bbox <- st_bbox(unions_ll)
+
+wind_at_unions <- function(lon, lat, landfall_wind) {
+  point_m <- st_sfc(st_point(c(lon, lat)), crs = 4326) |> st_transform(32646)
+  distance_km <- as.numeric(st_distance(unions_boundary_m, point_m)) / 1000
+  unions_ll |>
+    st_drop_geometry() |>
+    mutate(
+      distance_km = distance_km,
+      wind_reduction_factor = 0.9807 * exp(-0.003 * distance_km),
+      wind_speed_union = wind_reduction_factor * landfall_wind
+    ) |>
+    arrange(desc(wind_speed_union))
+}
+
+# --- UI ---------------------------------------------------------------------
+label_row <- function(label, input) {
+  fluidRow(
+    column(6, div(class = "input-label", label)),
+    column(6, input)
+  )
+}
+
 ui <- fluidPage(
-  title = "Cyclone Monitoring Tool",
+  title = "Bangladesh Cyclone Monitoring Tool",
   tags$head(
-    tags$link(rel = "icon", href = "path/to/favicon.ico"),
     tags$meta(name = "description", content = "A tool for monitoring cyclones in Bangladesh."),
-    tags$meta(name = "keywords", content = "cyclone, monitoring, Bangladesh"),
-    tags$link(rel = "stylesheet", href = "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap"),
-    tags$style(HTML("
-      body {
-        font-family: 'Roboto', sans-serif;
+    tags$link(rel = "stylesheet",
+              href = "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap"),
+    tags$style(HTML(sprintf("
+      body { font-family: 'Roboto', sans-serif; color: #222; }
+      .app-header {
+        display: flex; align-items: center; gap: 18px;
+        padding: 10px 16px; margin: 0 -15px 12px;
+        border-bottom: 3px solid %1$s; background: #fff;
       }
-      h2 {
-        font-family: 'Roboto', sans-serif;
-        font-weight: bold;
+      .app-header img { height: 44px; }
+      .app-header h1 { font-size: 22px; font-weight: 700; color: %1$s; margin: 0; }
+      .app-header .subtitle { font-size: 13px; color: #555; margin: 2px 0 0; }
+      .well { background: #f4f8fb; border: 1px solid #dde7ef; }
+      .input-label { padding-top: 7px; font-weight: 500; }
+      .threshold-note { font-size: 12px; color: #555; margin: -6px 0 10px; }
+      .threshold-note.changed { color: #b35900; font-weight: 700; }
+      .btn-primary, .btn-primary:focus { background: %1$s; border-color: %1$s; }
+      .btn-primary:hover { background: #0085ba; border-color: #0085ba; }
+      .btn { white-space: normal !important; }
+      #input_method .btn { width: 100%%; }
+      #input_method .btn.active { background: %1$s; border-color: %1$s; color: #fff; }
+      .shiny-download-link { display: block; width: 100%%; }
+      .result-banner {
+        padding: 10px 14px; border-radius: 5px; margin-bottom: 10px;
+        background: #f4f8fb; border-left: 4px solid %1$s; font-size: 15px;
       }
-      .shiny-input-container {
-        font-family: 'Roboto', sans-serif;
-      }
-    "))
+      .result-banner.hit { border-left-color: %2$s; background: #fdf1f1; }
+      .contact { margin-top: 16px; font-size: 13px; color: #555; }
+      .nav-tabs > li.active > a { color: %1$s; font-weight: 700; }
+      a { color: %1$s; }
+    ", OCHA_BLUE, ABOVE_COLOR)))
   ),
-  fluidRow(style="background-color: #1BB580; margin-bottom: 3px;",
-           column(8, h3("Bangladesh Cyclone AA Framework Monitoring Tool", style = "text-align: left;color:white;font-weight:bold;")),
-           column(4, div(style = "text-align: right", img(src = "centre_banner_greenbg.png", height = "50px", style = "margin-top:10px;")))
+  div(class = "app-header",
+      img(src = "ocha_logo_wide.png", alt = "OCHA"),
+      div(h1("Bangladesh Cyclone AA Framework Monitoring Tool"),
+          p(class = "subtitle",
+            "Estimated wind speed in the unions of the six target districts, from a forecast landfall"))
   ),
   sidebarLayout(
     sidebarPanel(
       width = 3,
-      tags$style(HTML("
-        .shiny-input-container {
-          background-color: #D8F2E9 !important;
-          border-radius: 5px;
-          padding: 5px;
-        }
-        .threshold-input .shiny-input-container {
-          background-color: #FFE5B4 !important;
-          border: 2px solid #FFA500 !important;
-        }
-        .input-label {
-          text-align: right;
-          align-items: center;
-          flex: 1;
-          margin: 4px;
-        }
-        .btn {
-          white-space: normal !important;
-          word-break: break-word;
-          text-align: center;
-        }
-        #input_method .btn {
-          white-space: normal;
-          width: 100%;
-          text-align: center;
-        }
-        #input_method .dummy-icon {
-          visibility: hidden;
-        }
-        .shiny-download-link {
-          display: block;
-          width: 100%;
-          text-align: center;
-        }
-      ")),
       radioGroupButtons(
         inputId = "input_method",
-        label = "Select Input Method:",
-        choices = c("Select Location on Map", "Enter Location Manually"),
-        selected = "Select Location on Map",
-        status = "success",
-        justified = TRUE,
-        checkIcon = list(
-          yes = icon("ok", lib = "glyphicon"),
-          no  = icon("remove", lib = "glyphicon")
-        )
+        label = "Landfall location",
+        choices = c("Click on map", "Enter manually"),
+        selected = "Click on map",
+        justified = TRUE
       ),
-      
-      fluidRow(
-        column(6, div(style = "display: flex; align-items: center;",
-                      tags$label("Longitude:", class = "input-label"))),
-        column(6, numericInput("lon", NULL, value = 89.54, step = 0.01, width = "100%"))
-      ),
-      
-      fluidRow(
-        column(6, div(style = "display: flex; align-items: center;",
-                      tags$label("Latitude:", class = "input-label"))),
-        column(6, numericInput("lat", NULL, value = 22.01, step = 0.01, width = "100%"))
-      ),
-      
-      fluidRow(
-        column(6, div(style = "display: flex; align-items: center;",
-                      tags$label("Forecasted Landfall Wind Speed (km/h):", class = "input-label"))),
-        column(6, numericInput("wind_speed", NULL, value = 0, step = 1, width = "100%"))
-      ),
-      
-      fluidRow(
-        column(6, div(style = "display: flex; align-items: center;",
-                      tags$label("Trigger Threshold (km/h):", class = "input-label"))),
-        column(6, div(class = "threshold-input",
-                      numericInput("threshold", NULL, value = 118, step = 1, width = "100%")))
-      ),
-      fluidRow(
-        column(12, actionButton("compute", "Compute Union Wind Speed", width = "100%")),
-        column(12, style = "margin-top: 10px;",
-               downloadButton("download_data", "Download Union Wind Speed Table", width = "100%"))
-      ),
-      div(style = "margin-top: 9px; font-size: 14px; color: black; text-align: left; font-style: italic; padding-top: 25px; background-color: #F8F9F9; border-radius: 5px;",
-          "This tool is in development. For questions, contact Pauline Ndirangu at ",
-          tags$a(href="mailto:pauline.ndirangu@un.org", "pauline.ndirangu@un.org.")
-      )
+      label_row("Longitude",
+                numericInput("lon", NULL, value = 89.54, step = 0.01, width = "100%")),
+      label_row("Latitude",
+                numericInput("lat", NULL, value = 22.01, step = 0.01, width = "100%")),
+      label_row("Landfall wind (km/h)",
+                numericInput("wind_speed", NULL, value = 120, min = 0, step = 1, width = "100%")),
+      label_row("Threshold (km/h)",
+                numericInput("threshold", NULL, value = FRAMEWORK_THRESHOLD, step = 1, width = "100%")),
+      uiOutput("threshold_note"),
+      actionButton("compute", "Compute union wind speed", class = "btn-primary", width = "100%"),
+      div(style = "margin-top: 10px;",
+          downloadButton("download_data", "Download union table (CSV)", width = "100%")),
+      div(class = "contact",
+          "For questions, contact OCHA Data Science at ",
+          tags$a(href = "mailto:ocha-datascience@un.org", "ocha-datascience@un.org"),
+          ".")
     ),
-    
+
     mainPanel(
       width = 9,
+      uiOutput("result_banner"),
       tabsetPanel(
-        tabPanel("Map", leafletOutput("map", height = 590)),
-        tabPanel("Division Summary Table", DTOutput("summary_table")),
-        tabPanel("Wind Speed Table", DTOutput("distance_table")),
+        tabPanel("Map", leafletOutput("map", height = 560)),
+        tabPanel("District summary", br(), DTOutput("summary_table")),
+        tabPanel("Union wind speeds", br(), DTOutput("distance_table")),
         tabPanel("Methodology",
-                 div(style = "padding: 15px; font-size: 16px; line-height: 1.6;",
-                     h3("Methodology Overview", style = "font-weight: bold;"),
-                     p("This tool estimates wind speeds at different locations using a wind reduction factor based on distance from the landfall point."),
-                     h4("Key Steps:"),
-                     tags$ul(
-                       tags$li("User selects a cyclone landfall location (Longitude, Latitude)."),
-                       tags$li("Wind speed is adjusted based on distance to administrative boundaries."),
-                       tags$li("A wind reduction factor is applied: ", strong("0.9807 * exp(-0.003 * distance)")),
-                       tags$li("Unions with wind speed above the defined threshold are highlighted."),
-                       tags$li("Results are displayed on the map and in summary tables.")
-                     )
+                 div(style = "padding: 15px; font-size: 15px; line-height: 1.6; max-width: 820px;",
+                     h3("How the estimate is made"),
+                     tags$ol(
+                       tags$li("Enter a forecast landfall location and the forecast wind speed at landfall."),
+                       tags$li("The distance from the landfall point to each union boundary is measured (UTM 46N)."),
+                       tags$li("A wind reduction factor is applied to the landfall wind: ",
+                               strong("0.9807 × exp(−0.003 × distance in km)"), "."),
+                       tags$li(sprintf("Unions with an estimated wind of %d km/h or higher are flagged.",
+                                       FRAMEWORK_THRESHOLD))
+                     ),
+                     h3("Framework"),
+                     p(sprintf(paste(
+                       "The framework uses forecasts from five models (BMD, IMD, ECMWF, GFS, JTWC).",
+                       "Readiness: at least two forecast %d km/h or higher in the target districts",
+                       "3-5 days before landfall. Action: the same, up to 72 hours before landfall.",
+                       "Target districts: %s."), FRAMEWORK_THRESHOLD,
+                       paste(TARGET_DISTRICTS, collapse = ", "))),
+                     p("ECMWF tracks are also checked automatically every hour, with the same",
+                       "calculation, and summarised by email."),
+                     p(tags$a(href = FRAMEWORK_URL, target = "_blank", "Framework document"))
                  )
         )
       )
@@ -173,134 +174,170 @@ ui <- fluidPage(
   )
 )
 
-# Define Server
+# --- Server -----------------------------------------------------------------
 server <- function(input, output, session) {
-  distance_calc <- reactive({
-    req(input$lon, input$lat)
-    
-    user_point_ll <- st_sfc(st_point(c(input$lon, input$lat)), crs = 4326)
-    user_point_m  <- st_transform(user_point_ll, 32646)
-    
-    as.numeric(st_distance(unions_boundary_m, user_point_m)) / 1000
-  }) |> bindCache(input$lon, input$lat)
-  
-  
-  # Render Leaflet map (render once; faster geometry)
+  results <- reactiveVal(NULL)
+
+  output$threshold_note <- renderUI({
+    changed <- isTRUE(input$threshold != FRAMEWORK_THRESHOLD)
+    div(class = paste("threshold-note", if (changed) "changed"),
+        if (changed) sprintf("Not the framework threshold (%d km/h)", FRAMEWORK_THRESHOLD)
+        else "Framework threshold")
+  })
+
   output$map <- renderLeaflet({
-    leaflet(options = leafletOptions(minZoom = 8)) |>
-      addTiles() |>
-      addPolygons(
-        data = unions_ll_slim,
-        group = "unions",
-        weight = 1,
-        color = "transparent",
-        fillOpacity = 0.0,
-        fillColor = "transparent"
-      )
+    leaflet() |>
+      addTiles(options = tileOptions(opacity = 0.7)) |>
+      addPolygons(data = unions_ll_slim, group = "unions", weight = 0.4,
+                  color = "#ffffff", fillColor = "#cfd8df", fillOpacity = 0.5,
+                  label = ~paste0(ADM4_EN, ", ", ADM2_EN)) |>
+      addPolylines(data = st_cast(districts_ll, "MULTILINESTRING"),
+                   color = "#52514e", weight = 1.2, opacity = 0.8, group = "districts") |>
+      addLabelOnlyMarkers(data = suppressWarnings(st_point_on_surface(districts_ll)),
+                          label = ~ADM2_EN,
+                          labelOptions = labelOptions(noHide = TRUE, direction = "center",
+                                                      textOnly = TRUE,
+                                                      style = list("font-weight" = "bold",
+                                                                   "font-size" = "12px",
+                                                                   "color" = "#222",
+                                                                   "text-shadow" = "0 0 3px #fff"))) |>
+      addMarkers(lng = 89.54, lat = 22.01, layerId = "landfall", label = "Landfall point") |>
+      fitBounds(bbox[["xmin"]], bbox[["ymin"]], bbox[["xmax"]], bbox[["ymax"]])
   })
-  
-  observeEvent(input$compute, {
-    req(input$lon, input$lat, input$threshold)
-    
-    # Create user point (lon/lat) then transform for distance
-    user_point_ll <- st_sfc(st_point(c(input$lon, input$lat)), crs = 4326)
-    user_point_m  <- st_transform(user_point_ll, 32646)
-    
-    # Compute distance to each polygon boundary (fast) in km
-    #distance_km <- as.numeric(st_distance(unions_boundary_m, user_point_m)) / 1000
-    distance_km <- distance_calc()
-    
-    # Compute wind stats (table)
-    distances <- unions_ll |>
-      st_drop_geometry() |>
-      mutate(
-        distance_km = distance_km,
-        wind_reduction_factor = 0.9807 * exp(-0.003 * distance_km),
-        wind_speed_union = wind_reduction_factor * input$wind_speed
-      ) |>
-      select(ADM1_EN,ADM2_EN,ADM2_PCODE,ADM3_EN,ADM3_PCODE,ADM4_EN,ADM4_PCODE,
-             distance_km, wind_reduction_factor, wind_speed_union) |>
-      arrange(desc(wind_speed_union))
-    
-    # Summary statistics (unchanged)
-    summary_data <- distances |>
-      mutate(above_threshold = wind_speed_union > input$threshold) |>
-      group_by(ADM1_EN) |>
-      summarize(
-        Above_Threshold = sum(above_threshold),
-        Total_Unions = n(),
-        Percent_Triggered = paste0(round(100 * sum(above_threshold) / n(), 1), "%"),
-        .groups = "drop"
-      )
-    
-    output$summary_table <- renderDT({
-      datatable(
-        summary_data,
-        colnames = c("Division", "Above Threshold", "Total Unions", "Percent Triggered"),
-        options = list(dom = 't', paging = FALSE, searching = FALSE, autoWidth = TRUE,
-                       columnDefs = list(list(className = "dt-center", targets = "_all"))),
-        rownames = FALSE,
-        width = "80%"
-      ) |>
-        formatStyle(columns = names(summary_data), textAlign = "center")
-    })
-    
-    output$distance_table <- renderDT({
-      datatable(
-        distances,
-        colnames = c("Division","District","PCODE","Upazila","PCODE","Union","PCODE",
-                     "Distance (km)", "Wind Reduction Factor", "Wind Speed (km/h)"),
-        options = list(pageLength = 50, autoWidth = TRUE),
-        rownames = FALSE
-      ) |>
-        formatRound(columns = c("distance_km", "wind_reduction_factor", "wind_speed_union"), digits = 2) |>
-        formatStyle(
-          columns = "wind_speed_union",
-          target = "row",
-          backgroundColor = styleInterval(input$threshold, c(NA, "rgba(255, 99, 71, 0.5)"))
-        )
-    })
-    
-    output$download_data <- downloadHandler(
-      filename = function() {
-        paste0("distance_table_", Sys.Date(), "_", format(Sys.time(), "%H%M%S"), ".csv")
-      },
-      content = function(file) {
-        write.csv(distances, file, row.names = FALSE)
-      }
-    )
-    
-    # Join wind_speed_union back to polygons for styling (cheap + clean)
-    map_data <- unions_ll_slim |>
-      left_join(distances |> select(ADM4_PCODE, wind_speed_union), by = "ADM4_PCODE") |>
-      mutate(triggered = !is.na(wind_speed_union) & wind_speed_union > input$threshold)
-    
-    # Update map efficiently (no clearShapes(), no double polygons)
-    leafletProxy("map") |>
-      clearMarkers() |>
-      addMarkers(lng = input$lon, lat = input$lat, popup = "Landfall Point") |>
-      clearGroup("unions") |>
-      addPolygons(
-        data = map_data,
-        group = "unions",
-        color = "transparent",
-        weight = 1,
-        fillOpacity = 0.5,
-        fillColor = ~ifelse(triggered, "tomato", "#3EB489")
-      )
-  })
-  
+
   observeEvent(input$map_click, {
-    if (input$input_method == "Select Location on Map") {
+    if (input$input_method == "Click on map") {
       click <- input$map_click
-      updateNumericInput(session, "lat", value = click$lat)
-      updateNumericInput(session, "lon", value = click$lng)
-      
+      updateNumericInput(session, "lat", value = round(click$lat, 3))
+      updateNumericInput(session, "lon", value = round(click$lng, 3))
       leafletProxy("map") |>
-        clearMarkers() |>
-        addMarkers(lng = click$lng, lat = click$lat, popup = "Selected Point")
+        addMarkers(lng = click$lng, lat = click$lat, layerId = "landfall", label = "Landfall point")
     }
   })
+
+  observeEvent(input$compute, {
+    validate_msg <- NULL
+    if (!isTruthy(input$lon) || input$lon < 85 || input$lon > 95)
+      validate_msg <- "Longitude must be between 85 and 95."
+    else if (!isTruthy(input$lat) || input$lat < 18 || input$lat > 27)
+      validate_msg <- "Latitude must be between 18 and 27."
+    else if (!isTruthy(input$wind_speed) || input$wind_speed <= 0)
+      validate_msg <- "Enter a landfall wind speed above 0 km/h."
+    else if (!isTruthy(input$threshold) || input$threshold <= 0)
+      validate_msg <- "Enter a threshold above 0 km/h."
+    if (!is.null(validate_msg)) {
+      showNotification(validate_msg, type = "error")
+      return()
+    }
+
+    distances <- wind_at_unions(input$lon, input$lat, input$wind_speed) |>
+      mutate(above_threshold = wind_speed_union >= input$threshold)
+
+    results(list(
+      distances = distances,
+      lon = input$lon, lat = input$lat,
+      wind = input$wind_speed, threshold = input$threshold
+    ))
+
+    map_data <- unions_ll_slim |>
+      left_join(distances |> select(ADM4_PCODE, wind_speed_union, above_threshold),
+                by = "ADM4_PCODE")
+
+    leafletProxy("map") |>
+      addMarkers(lng = input$lon, lat = input$lat, layerId = "landfall", label = "Landfall point") |>
+      clearGroup("unions") |>
+      addPolygons(
+        data = map_data, group = "unions",
+        color = "#ffffff", weight = 0.4, fillOpacity = 0.75,
+        fillColor = ~ifelse(above_threshold, ABOVE_COLOR, BELOW_COLOR),
+        label = ~sprintf("%s, %s: %.0f km/h", ADM4_EN, ADM2_EN, wind_speed_union)
+      ) |>
+      clearControls() |>
+      addLegend(position = "bottomright",
+                colors = c(ABOVE_COLOR, BELOW_COLOR),
+                labels = c(sprintf("%g km/h or higher", input$threshold),
+                           sprintf("Below %g km/h", input$threshold)),
+                title = "Estimated union wind", opacity = 0.9)
+  })
+
+  output$result_banner <- renderUI({
+    r <- results()
+    if (is.null(r)) {
+      return(div(class = "result-banner",
+                 "Pick a landfall point, enter the forecast landfall wind and press ",
+                 strong("Compute union wind speed"), "."))
+    }
+    d <- r$distances
+    n_above <- sum(d$above_threshold)
+    districts <- sort(unique(d$ADM2_EN[d$above_threshold]))
+    detail <- paste0(
+      sprintf(" at or above %g km/h", r$threshold),
+      if (n_above > 0) sprintf(" (%s)", paste(districts, collapse = ", ")),
+      sprintf(". Highest estimate %.0f km/h. Landfall %.2fN %.2fE at %g km/h.",
+              max(d$wind_speed_union), r$lat, r$lon, r$wind)
+    )
+    div(class = paste("result-banner", if (n_above > 0) "hit"),
+        HTML(paste0("<strong>", sprintf("%d of %d unions", n_above, nrow(d)),
+                    "</strong>", htmltools::htmlEscape(detail))))
+  })
+
+  output$summary_table <- renderDT({
+    r <- results()
+    req(r)
+    summary_data <- r$distances |>
+      group_by(ADM1_EN, ADM2_EN) |>
+      summarize(
+        above = sum(above_threshold),
+        total = n(),
+        share = above / total,
+        max_wind = max(wind_speed_union),
+        .groups = "drop"
+      ) |>
+      arrange(desc(max_wind))
+    datatable(
+      summary_data,
+      colnames = c("Division", "District", "Unions at or above threshold", "Total unions",
+                   "Share", "Highest union wind (km/h)"),
+      options = list(dom = "t", paging = FALSE, searching = FALSE,
+                     columnDefs = list(list(className = "dt-center", targets = 2:5))),
+      rownames = FALSE
+    ) |>
+      formatPercentage("share", 0) |>
+      formatRound("max_wind", 0)
+  })
+
+  output$distance_table <- renderDT({
+    r <- results()
+    req(r)
+    datatable(
+      r$distances |> select(-above_threshold),
+      colnames = c("Division", "District", "District PCODE", "Upazila", "Upazila PCODE",
+                   "Union", "Union PCODE", "Distance (km)", "Wind reduction factor",
+                   "Wind speed (km/h)"),
+      options = list(pageLength = 50),
+      rownames = FALSE
+    ) |>
+      formatRound(c("distance_km", "wind_speed_union"), 1) |>
+      formatRound("wind_reduction_factor", 3) |>
+      # styleInterval is strict ">", so step just below the threshold to flag ">="
+      formatStyle("wind_speed_union", target = "row",
+                  backgroundColor = styleInterval(r$threshold - 1e-9,
+                                                  c(NA, "rgba(208, 59, 59, 0.18)")))
+  })
+
+  output$download_data <- downloadHandler(
+    filename = function() {
+      paste0("bgd_union_wind_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".csv")
+    },
+    content = function(file) {
+      r <- results()
+      if (is.null(r)) {
+        write.csv(data.frame(note = "Press Compute union wind speed first."), file, row.names = FALSE)
+      } else {
+        write.csv(r$distances, file, row.names = FALSE)
+      }
+    }
+  )
 }
 
 # Run App
