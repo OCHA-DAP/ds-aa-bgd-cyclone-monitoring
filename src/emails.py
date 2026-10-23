@@ -16,7 +16,6 @@ from src.constants import (
     FRAMEWORK_URL,
     LISTMONK_LIST_ID,
     OCHA_BLUE,
-    OCHA_LOGO,
     THRESHOLD_KMH,
 )
 
@@ -42,11 +41,6 @@ def listmonk_client() -> ListmonkClient:
         username=os.environ["DSCI_LISTMONK_API_USERNAME"],
         password=os.environ["DSCI_LISTMONK_API_KEY"],
     )
-
-
-def _logo_src() -> str:
-    with open(OCHA_LOGO, "rb") as f:
-        return f"data:image/png;base64,{base64.b64encode(f.read()).decode()}"
 
 
 def _embed(fig) -> str:
@@ -123,8 +117,6 @@ def build_body(issue_time, storms: list) -> str:
   .bgd-cyclone p {{ line-height:1.5; }}
 </style>
 <div class="bgd-cyclone">
-          <img src="{_logo_src()}" alt="OCHA" width="150"
-               style="display:block;width:150px;height:auto;margin:0 0 8px;">
           <h1>Bangladesh Cyclone Monitoring: ECMWF forecast</h1>
           <p>Issued {issue_time:%d %B %Y %H:%M UTC}. Storms within reach of
           the target districts: {names}.</p>

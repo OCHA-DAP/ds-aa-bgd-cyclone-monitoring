@@ -92,5 +92,3 @@ FRAMEWORK_URL = (
 
 # OCHA blue, as in the Listmonk template header the email sits under
 OCHA_BLUE = "#009EDB"
-
-OCHA_LOGO = "assets/ocha_logo_wide.png"
