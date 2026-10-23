@@ -61,5 +61,10 @@ COPY . .
 # Expose port for Shiny app
 EXPOSE 3838
 
-# Run the Shiny app with the correct library path
-CMD ["Rscript", "-e", "renv::load(); .libPaths(c(Sys.getenv('RENV_PATHS_LIBRARY'), .libPaths())); shiny::runApp('app.R', host = '0.0.0.0', port = 3838)"]
+# Run the Shiny app straight from the library restored above.
+# --no-init-file skips .Rprofile, so renv's activate script does not bootstrap
+# renv at start-up, and renv::load() is not called. On App Service
+# (2026-10-23) that bootstrap failed to copy renv from its cache and
+# renv::load() then stopped with "there is no package called 'renv'".
+# Starting this way also needs no internet access.
+CMD ["Rscript", "--no-init-file", "-e", ".libPaths(c(Sys.getenv('RENV_PATHS_LIBRARY'), .libPaths())); shiny::runApp('app.R', host = '0.0.0.0', port = 3838)"]

@@ -48,6 +48,11 @@ districts_ll <- unions_m |>
 
 bbox <- st_bbox(unions_ll)
 
+# Wind speeds are shown rounded DOWN to one decimal, so a union just below
+# the threshold (e.g. 117.96) never displays as reaching it (118.0).
+floor1 <- function(x) floor(x * 10) / 10
+fmt_wind <- function(x) sprintf("%.1f", floor1(x))
+
 wind_at_unions <- function(lon, lat, landfall_wind) {
   point_m <- st_sfc(st_point(c(lon, lat)), crs = 4326) |> st_transform(32646)
   distance_km <- as.numeric(st_distance(unions_boundary_m, point_m)) / 1000
@@ -250,7 +255,7 @@ server <- function(input, output, session) {
         data = map_data, group = "unions",
         color = "#ffffff", weight = 0.4, fillOpacity = 0.75,
         fillColor = ~ifelse(above_threshold, ABOVE_COLOR, BELOW_COLOR),
-        label = ~sprintf("%s, %s: %.0f km/h", ADM4_EN, ADM2_EN, wind_speed_union)
+        label = ~sprintf("%s, %s: %s km/h", ADM4_EN, ADM2_EN, fmt_wind(wind_speed_union))
       ) |>
       clearControls() |>
       addLegend(position = "bottomright",
@@ -263,9 +268,9 @@ server <- function(input, output, session) {
   output$result_banner <- renderUI({
     r <- results()
     if (is.null(r)) {
-      return(div(class = "result-banner",
-                 "Pick a landfall point, enter the forecast landfall wind and press ",
-                 strong("Compute union wind speed"), "."))
+      return(div(class = "result-banner", HTML(paste0(
+        "Pick a landfall point, enter the forecast landfall wind and press ",
+        "<strong>Compute union wind speed</strong>."))))
     }
     d <- r$distances
     n_above <- sum(d$above_threshold)
@@ -273,8 +278,8 @@ server <- function(input, output, session) {
     detail <- paste0(
       sprintf(" at or above %g km/h", r$threshold),
       if (n_above > 0) sprintf(" (%s)", paste(districts, collapse = ", ")),
-      sprintf(". Highest estimate %.0f km/h. Landfall %.2fN %.2fE at %g km/h.",
-              max(d$wind_speed_union), r$lat, r$lon, r$wind)
+      sprintf(". Highest estimate %s km/h. Landfall %.2fN %.2fE at %g km/h.",
+              fmt_wind(max(d$wind_speed_union)), r$lat, r$lon, r$wind)
     )
     div(class = paste("result-banner", if (n_above > 0) "hit"),
         HTML(paste0("<strong>", sprintf("%d of %d unions", n_above, nrow(d)),
@@ -290,7 +295,7 @@ server <- function(input, output, session) {
         above = sum(above_threshold),
         total = n(),
         share = above / total,
-        max_wind = max(wind_speed_union),
+        max_wind = floor1(max(wind_speed_union)),
         .groups = "drop"
       ) |>
       arrange(desc(max_wind))
@@ -303,14 +308,15 @@ server <- function(input, output, session) {
       rownames = FALSE
     ) |>
       formatPercentage("share", 0) |>
-      formatRound("max_wind", 0)
+      formatRound("max_wind", 1)
   })
 
   output$distance_table <- renderDT({
     r <- results()
     req(r)
     datatable(
-      r$distances |> select(-above_threshold),
+      r$distances |> select(-above_threshold) |>
+        mutate(wind_speed_union = floor1(wind_speed_union)),
       colnames = c("Division", "District", "District PCODE", "Upazila", "Upazila PCODE",
                    "Union", "Union PCODE", "Distance (km)", "Wind reduction factor",
                    "Wind speed (km/h)"),
