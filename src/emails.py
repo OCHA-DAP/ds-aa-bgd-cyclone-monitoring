@@ -134,11 +134,7 @@ def build_body(issue_time, storms: list) -> str:
 
 
 def _delivered(client, campaign_id, polls: int = 10) -> bool:
-    """Wait for a sent campaign to finish and read back its sent count.
-
-    This instance has been seen to mark a campaign ``finished`` while having
-    sent to nobody, so delivery is read back rather than assumed.
-    """
+    """Wait for a sent campaign to finish and read back its sent count."""
     for _ in range(polls):
         time.sleep(3)
         campaign = client.get_campaign(campaign_id)
@@ -150,36 +146,29 @@ def _delivered(client, campaign_id, polls: int = 10) -> bool:
     return False
 
 
-def send_monitoring_email(issue_time, storms: list, attempts: int = 3) -> int:
+def send_monitoring_email(issue_time, storms: list) -> int:
     """Send the monitoring email to list 103. Returns the campaign ID.
 
-    A finished campaign cannot be sent again, so a silent drop is retried
-    with a new campaign.
+    One campaign per cycle. This Listmonk instance sometimes reports a
+    finished campaign as sent to nobody while the email is in fact
+    delivered, so a 0 sent count is only logged as a warning: retrying with
+    a new campaign sent duplicates (5 of 14 cycles, 23-25 October 2026).
     """
     client = listmonk_client()
     names = ", ".join(s["storm_id"] for s in storms)
     subject = (
         f"Bangladesh Cyclone Monitoring: ECMWF {issue_time:%d %b %H}Z ({names})"
     )
-    body = build_body(issue_time, storms)
-    campaign_id = None
-    for attempt in range(1, attempts + 1):
-        suffix = "" if attempt == 1 else f"-retry{attempt - 1}"
-        campaign_id = client.create_campaign(
-            name=f"bgd-cyclone-ecmwf-{issue_time:%Y%m%dT%H}{suffix}",
-            subject=subject,
-            body=body,
-            list_ids=[LISTMONK_LIST_ID],
-        )
-        client.send_campaign(campaign_id, skip_confirmation=True)
-        if _delivered(client, campaign_id):
-            return campaign_id
-        print(
-            f"  Listmonk campaign {campaign_id} finished with nobody sent "
-            f"({attempt}/{attempts})"
-        )
-    print(
-        f"  WARNING: no Listmonk campaign reported a delivery; last was "
-        f"{campaign_id}. Check the Listmonk UI."
+    campaign_id = client.create_campaign(
+        name=f"bgd-cyclone-ecmwf-{issue_time:%Y%m%dT%H}",
+        subject=subject,
+        body=build_body(issue_time, storms),
+        list_ids=[LISTMONK_LIST_ID],
     )
+    client.send_campaign(campaign_id, skip_confirmation=True)
+    if not _delivered(client, campaign_id):
+        print(
+            f"  WARNING: Listmonk reports campaign {campaign_id} as sent to 0 "
+            "recipients. Not retried; check the Listmonk UI or the inbox."
+        )
     return campaign_id
